@@ -4,13 +4,15 @@ import * as db from "./db.js";
 import { parseCents, formatEur } from "./money.js";
 import { TREE, BY_ID, topCategories, currentCategoryId } from "./categories.js";
 import { buildExport, exportFileName, validateImport, validateRules } from "./backup.js";
-import { decodeOfx, parseOfx, importLines, groupsToClassify, classifyGroup } from "./bank.js";
+import { decodeOfx, parseOfx, importLines, groupsToClassify, classifyGroup, isImported } from "./bank.js";
 
 const view = document.getElementById("view");
 const flashBox = document.getElementById("flash");
 const BACKUP_WARN_DAYS = 7;
 const MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet",
   "août", "septembre", "octobre", "novembre", "décembre"];
+const MONTHS_SHORT = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.",
+  "août", "sept.", "oct.", "nov.", "déc."];
 
 // --- Helpers -----------------------------------------------------------------
 
@@ -37,6 +39,8 @@ function flash(message, isError = false) {
 }
 
 function catLabel(op) {
+  // Not classified yet: show the bank label and a "?".
+  if (isImported(op)) return { icon: "?", name: op.label || "Sans libellé", unknown: true };
   const cat = BY_ID.get(op.categoryId);
   return cat ? { icon: cat.icon, name: cat.name } : { icon: "•", name: "Sans catégorie" };
 }
@@ -46,16 +50,16 @@ function signedAmount(op) {
 }
 
 function opRow(op, actions = "") {
-  const { icon, name } = catLabel(op);
+  const { icon, name, unknown } = catLabel(op);
   const tags = [
     op.isPro ? '<span class="tag pro">pro</span>' : "",
     op.reimbursementStatus === "pending" ? '<span class="tag warn">à rembourser</span>' : "",
     op.reimbursementStatus === "reimbursed" ? '<span class="tag ok">remboursé</span>' : "",
   ].join("");
   return `<div class="op-row">
-    <span class="op-icon ${op.type}">${icon}</span>
+    <span class="op-icon ${op.type}${unknown ? " unknown" : ""}"${unknown ? ' title="À catégoriser"' : ""}>${icon}</span>
     <span class="op-main"><strong>${esc(name)}</strong>
-      <small>${esc(op.comment || op.label || "") || shortDate(op.date)} ${tags}</small></span>
+      <small>${unknown ? esc(op.comment) || shortDate(op.date) : esc(op.comment || op.label || "") || shortDate(op.date)} ${tags}</small></span>
     <span class="op-amount ${op.type}">${signedAmount(op)}</span>
     ${actions}
   </div>`;
@@ -164,44 +168,114 @@ function shiftMonth(ym, delta) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-async function renderOps(ym) {
-  const [start, end] = monthBounds(ym);
-  const ops = (await db.operationsBetween(start, end))
-    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
-  // Pro operations stay out of personal totals.
-  const personal = ops.filter((o) => !o.isPro);
-  const sum = (type) => personal.filter((o) => o.type === type).reduce((s, o) => s + o.amountCents, 0);
-  const [y, m] = ym.split("-").map(Number);
+function opsTabs(active, toClassify) {
+  return `<nav class="segmented" aria-label="Vue des opérations">
+    <a href="#/ops" class="${active === "ops" ? "active" : ""}">Toutes</a>
+    <a href="#/classify" class="${active === "classify" ? "active" : ""}">À catégoriser${
+      toClassify ? ` <span class="badge">${toClassify}</span>` : ""}</a>
+  </nav>`;
+}
 
+/** Month grid per year, most recent year first. Future months are greyed. */
+function monthPicker(ym, firstYear) {
+  const now = isoDate().slice(0, 7);
+  const [y, m] = ym.split("-").map(Number);
+  let years = "";
+  for (let year = Number(now.slice(0, 4)); year >= firstYear; year -= 1) {
+    const cells = MONTHS_SHORT.map((label, i) => {
+      const value = `${year}-${String(i + 1).padStart(2, "0")}`;
+      if (value > now) return `<span class="future" aria-disabled="true">${label}</span>`;
+      const cls = [value === ym ? "active" : "", value === now ? "now" : ""].join(" ").trim();
+      return `<a href="#/ops/${value}" class="${cls}">${label}</a>`;
+    }).join("");
+    years += `<div class="month-year">${year}</div><div class="month-grid">${cells}</div>`;
+  }
+  return `<details class="month-picker" id="month-picker">
+    <summary>${MONTHS[m - 1]} ${y} ▾</summary>
+    <div class="month-panel">${years}</div>
+  </details>`;
+}
+
+function opsList(ops) {
   let lastDay = null;
-  const rows = ops.map((op) => {
+  return ops.map((op) => {
     const day = op.date !== lastDay ? `<p class="day">${shortDate(op.date)}</p>` : "";
     lastDay = op.date;
     return day + opRow(op, `<button class="link danger" data-delete="${op.id}" aria-label="Supprimer">🗑</button>`);
   }).join("");
+}
+
+function matches(op, query) {
+  const text = `${op.label || ""} ${op.comment || ""} ${catLabel(op).name}`;
+  const fold = (t) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return fold(text).includes(fold(query));
+}
+
+async function renderOps(ym) {
+  const now = isoDate().slice(0, 7);
+  if (ym > now) ym = now;
+  const all = await db.allOperations();
+  const [start, end] = monthBounds(ym);
+  const monthOps = all.filter((o) => o.date >= start && o.date <= end)
+    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
+  const firstYear = Math.min(Number(ym.slice(0, 4)),
+    ...all.map((o) => Number(o.date.slice(0, 4))));
+  const toClassify = all.filter(isImported).length;
+  const next = shiftMonth(ym, 1);
 
   view.innerHTML = `
-    <div class="top"><h1>Opérations</h1></div>
+    <div class="top"><h1>Opérations</h1>
+      <button type="button" class="icon-btn" id="search-toggle" aria-label="Rechercher"
+        aria-controls="search" aria-expanded="false">🔍</button></div>
+    ${opsTabs("ops", toClassify)}
+    <input type="search" id="search" placeholder="Rechercher dans le mois…" aria-label="Rechercher" hidden>
     <div class="month-nav">
       <a href="#/ops/${shiftMonth(ym, -1)}" aria-label="Mois précédent">‹</a>
-      <strong>${MONTHS[m - 1]} ${y}</strong>
-      <a href="#/ops/${shiftMonth(ym, 1)}" aria-label="Mois suivant">›</a>
+      ${monthPicker(ym, firstYear)}
+      ${next <= now ? `<a href="#/ops/${next}" aria-label="Mois suivant">›</a>`
+        : '<span class="disabled" aria-hidden="true">›</span>'}
     </div>
     <div class="grid2">
-      <div class="tile expense"><small>Dépenses</small><strong>${formatEur(sum("expense"))}</strong></div>
-      <div class="tile income"><small>Revenus</small><strong>${formatEur(sum("income"))}</strong></div>
+      <div class="tile expense"><small>Dépenses</small><strong id="sum-expense"></strong></div>
+      <div class="tile income"><small>Revenus</small><strong id="sum-income"></strong></div>
     </div>
     <p class="hint">Les opérations pro sont exclues des totaux.</p>
-    ${rows || '<p class="muted">Aucune opération ce mois-ci.</p>'}`;
+    <div id="list"></div>`;
 
-  view.querySelectorAll("[data-delete]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const op = await db.getOperation(button.dataset.delete);
-      if (!op || !confirm(`Supprimer ${catLabel(op).name} ${signedAmount(op)} du ${shortDate(op.date)} ?`)) return;
-      await db.deleteOperation(op.id);
-      flash("Opération supprimée.");
-      renderOps(ym);
-    });
+  const search = view.querySelector("#search");
+  const toggle = view.querySelector("#search-toggle");
+  const show = () => {
+    const query = search.value.trim();
+    const ops = query ? monthOps.filter((o) => matches(o, query)) : monthOps;
+    // Pro operations stay out of personal totals.
+    const personal = ops.filter((o) => !o.isPro);
+    const sum = (type) => personal.filter((o) => o.type === type).reduce((t, o) => t + o.amountCents, 0);
+    view.querySelector("#sum-expense").textContent = formatEur(sum("expense"));
+    view.querySelector("#sum-income").textContent = formatEur(sum("income"));
+    view.querySelector("#list").innerHTML = opsList(ops)
+      || `<p class="muted">${query ? "Aucun résultat." : "Aucune opération ce mois-ci."}</p>`;
+  };
+  show();
+  search.addEventListener("input", show);
+  toggle.addEventListener("click", () => {
+    search.hidden = !search.hidden;
+    toggle.setAttribute("aria-expanded", String(!search.hidden));
+    if (search.hidden) {
+      search.value = "";
+      show();
+    } else {
+      search.focus();
+    }
+  });
+
+  view.querySelector("#list").addEventListener("click", async (e) => {
+    const button = e.target.closest("[data-delete]");
+    if (!button) return;
+    const op = await db.getOperation(button.dataset.delete);
+    if (!op || !confirm(`Supprimer ${catLabel(op).name} ${signedAmount(op)} du ${shortDate(op.date)} ?`)) return;
+    await db.deleteOperation(op.id);
+    flash("Opération supprimée.");
+    renderOps(ym);
   });
 }
 
@@ -278,7 +352,7 @@ async function renderBackup() {
       <p class="hint">Ajoute les opérations du relevé de ta banque. Les numéros de compte ne sont pas lus,
         les opérations déjà importées sont ignorées.</p>
       <input type="file" id="ofx" accept=".ofx,.qfx">
-      <p><a href="#/classify">📥 Opérations à classer</a></p>
+      <p><a href="#/classify">❓ Opérations à catégoriser</a></p>
     </div>
     <div class="card"><h2>Stockage</h2><p class="hint" id="storage">…</p></div>`;
 
@@ -375,20 +449,25 @@ async function importOfx(file) {
 // --- Bank import: classify ---------------------------------------------------
 
 async function renderClassify() {
-  const groups = groupsToClassify(await db.allOperations()).slice(0, 50);
+  const all = await db.allOperations();
+  const toClassify = all.filter(isImported).length;
+  const groups = groupsToClassify(all).slice(0, 50);
   const options = (kind) => TREE[kind]
     .filter((p) => p.name !== "Import")
     .map((p) => `<option value="${p.id}">${p.icon} ${esc(p.name)}</option>${
       p.children.map((c) => `<option value="${c.id}">&nbsp;&nbsp;&nbsp;${esc(c.name)}</option>`).join("")}`)
     .join("");
   view.innerHTML = `
-    <div class="top"><h1>À classer</h1></div>
-    ${groups.length ? `<p class="hint">Opérations importées, regroupées par libellé. Le choix s'applique
-      au groupe et sert de règle pour les prochains imports.</p>` : '<p class="card">Rien à classer ✓</p>'}
+    <div class="top"><h1>Opérations</h1></div>
+    ${opsTabs("classify", toClassify)}
+    ${groups.length ? `<p class="hint">Opérations importées, regroupées par libellé, les plus récentes d'abord.
+      Le choix s'applique au groupe et devient une règle pour les prochains imports.</p>`
+      : '<p class="card">Rien à catégoriser ✓</p>'}
     ${groups.map((g, i) => `<form class="card stack" data-index="${i}">
-      <div><strong>${esc(g.example)}</strong>
-        <small class="muted">${g.count} opération${g.count > 1 ? "s" : ""} ·
-        ${g.kind === "expense" ? formatEur(-g.totalCents) : formatEur(g.totalCents, true)}</small></div>
+      <div class="classify-head"><span class="op-icon ${g.kind} unknown" aria-hidden="true">?</span>
+        <div><strong>${esc(g.example)}</strong>
+        <small class="muted">${shortDate(g.lastDate)} · ${g.count} opération${g.count > 1 ? "s" : ""} ·
+        ${g.kind === "expense" ? formatEur(-g.totalCents) : formatEur(g.totalCents, true)}</small></div></div>
       <div class="inline-form">
         <select name="category" required aria-label="Catégorie">
           <option value="">— Catégorie —</option>${options(g.kind)}</select>
@@ -415,7 +494,7 @@ async function renderClassify() {
 async function route() {
   const [, page = "add", arg] = location.hash.split("/");
   document.querySelectorAll(".tabbar a").forEach((a) =>
-    a.classList.toggle("active", a.dataset.tab === (page === "classify" ? "backup" : page)));
+    a.classList.toggle("active", a.dataset.tab === (page === "classify" ? "ops" : page)));
   try {
     if (page === "ops") await renderOps(/^\d{4}-\d{2}$/.test(arg) ? arg : isoDate().slice(0, 7));
     else if (page === "reports") await renderReports();

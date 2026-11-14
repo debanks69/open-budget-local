@@ -92,19 +92,24 @@ export function importLines(existing, lines, rules, now = new Date()) {
   return { operations, skipped, classified };
 }
 
-const isImported = (op) => op.categoryId === IMPORT_ID[op.type];
+/** True for an operation still in the import category (not classified yet). */
+export const isImported = (op) => op.categoryId === IMPORT_ID[op.type];
 
-/** Operations in the import category, grouped by label key, biggest first. */
+/** Operations in the import category, grouped by label key, most recent first. */
 export function groupsToClassify(operations) {
   const groups = new Map();
   for (const op of operations.filter(isImported)) {
     const key = ruleKey(op.type, labelKey(op.label || ""));
-    const group = groups.get(key) || { kind: op.type, key: labelKey(op.label || ""), example: op.label || "(sans libellé)", count: 0, totalCents: 0 };
+    const group = groups.get(key) || { kind: op.type, key: labelKey(op.label || ""), example: op.label || "(sans libellé)", count: 0, totalCents: 0, lastDate: op.date };
     group.count += 1;
     group.totalCents += op.amountCents;
+    if (op.date > group.lastDate) {
+      group.lastDate = op.date;
+      group.example = op.label || group.example;
+    }
     groups.set(key, group);
   }
-  return [...groups.values()].sort((a, b) => b.count - a.count || b.totalCents - a.totalCents);
+  return [...groups.values()].sort((a, b) => b.lastDate.localeCompare(a.lastDate) || b.count - a.count);
 }
 
 /** Classify a group: return the changed operations and the new rules. */

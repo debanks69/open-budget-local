@@ -41,7 +41,9 @@ test("import skips duplicates, classify learns a rule", () => {
   assert.equal(importLines(first.operations, lines, {}).skipped, 4);
 
   const groups = groupsToClassify(first.operations);
-  assert.deepEqual(groups[0], { kind: "expense", key: "CARREFOUR PARIS", example: "CARREFOUR 1234 PARIS", count: 2, totalCents: 4250 });
+  // Most recent group first; the example is the most recent label.
+  assert.deepEqual(groups[0], { kind: "expense", key: "CARREFOUR PARIS", example: "CARREFOUR 5678 PARIS", count: 2, totalCents: 4250, lastDate: "2026-11-05" });
+  assert.equal(groups.at(-1).key, "VIR SALAIRE ACME");
 
   const { changed, rules } = classifyGroup(first.operations, {}, "expense", "CARREFOUR PARIS", "essentiel/courses");
   assert.equal(changed.length, 2);

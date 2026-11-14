@@ -1,7 +1,7 @@
 // Offline support: cache the app shell, serve it cache first.
 // Bump VERSION at each release so phones fetch the new files.
 
-const VERSION = "v2";
+const VERSION = "v3";
 const CACHE = `open-budget-local-${VERSION}`;
 const SHELL = [
   "./",
