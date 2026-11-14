@@ -10,10 +10,14 @@ import {
 } from "./screens-ops.js";
 import {
   renderProjects, renderProject, renderMore, renderAccounts, renderAccount,
-  renderPurchases, renderPurchase, renderCategories, renderImport, renderBackup,
+  renderPurchases, renderPurchase, renderCategories, renderImport, renderBackup, renderFeedback,
 } from "./screens-more.js";
+import { NOT_A_SCREEN } from "./feedback.js";
 
-const MORE_PAGES = ["more", "accounts", "account", "purchases", "purchase", "categories", "reports", "import", "backup"];
+const MORE_PAGES = ["more", "accounts", "account", "purchases", "purchase", "categories", "reports", "import", "backup", "feedback"];
+
+// Last screen seen outside the "Plus" menu, for the feedback form.
+let lastHash = "";
 
 function activeTab(page) {
   if (page === "home") return "home";
@@ -26,6 +30,7 @@ function activeTab(page) {
 async function route() {
   const [, page = "home", arg] = location.hash.split("/");
   const current = page || "home";
+  if (!NOT_A_SCREEN.has(current)) lastHash = location.hash;
   document.querySelectorAll(".tabbar a").forEach((a) =>
     a.classList.toggle("active", a.dataset.tab === activeTab(current)));
   window.scrollTo(0, 0);
@@ -46,6 +51,7 @@ async function route() {
       case "categories": renderCategories(); break;
       case "import": await renderImport(); break;
       case "backup": await renderBackup(); break;
+      case "feedback": renderFeedback(lastHash); break;
       default: await renderHome();
     }
   } catch (error) {

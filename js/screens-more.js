@@ -14,6 +14,7 @@ import {
   view, esc, isoDate, frDate, flash, newId, loadAll, byId, fullCategoryName,
   categoryOptions, accountOptions, progressBar, header, formCents, amountInput,
 } from "./ui.js";
+import { SCREENS, screenOf, feedbackText } from "./feedback.js";
 
 /** Run a form handler; show its error message in French instead of failing. */
 function onSubmit(form, handler) {
@@ -160,6 +161,7 @@ export function renderMore() {
       <a href="#/reports">🧾 Notes de frais</a>
       <a href="#/import">📥 Import bancaire (OFX)</a>
       <a href="#/backup">💾 Sauvegarde</a>
+      <a href="#/feedback">💬 Envoyer un retour</a>
     </nav>
     <p class="muted">Bientôt : statistiques, budgets mensuels, récurrences.</p>
     <p class="hint">Les données restent sur ce téléphone. Exporte-les régulièrement depuis « Sauvegarde ».</p>`;
@@ -484,5 +486,60 @@ export async function renderBackup() {
     await db.setMeta("rules", rules);
     flash(`${restored.operations.length} opérations restaurées.`);
     renderBackup();
+  });
+}
+
+// --- Feedback --------------------------------------------------------------------------
+
+/** Version of the installed app, from the name of the service worker cache. */
+async function appVersion() {
+  try {
+    const name = (await caches.keys()).find((key) => key.startsWith("open-budget-local-"));
+    return name ? name.slice("open-budget-local-".length) : "";
+  } catch {
+    return "";
+  }
+}
+
+/** Feedback form. `lastHash` is the last screen seen before the "Plus" menu. */
+export function renderFeedback(lastHash) {
+  const { key, detail } = screenOf(lastHash);
+  const options = Object.entries(SCREENS)
+    .map(([k, label]) => `<option value="${k}"${k === key ? " selected" : ""}>${esc(label)}${k === key && detail ? ` (${esc(detail)})` : ""}</option>`)
+    .join("");
+  view.innerHTML = `${header("Envoyer un retour", ["#/more", "Plus"])}
+    <form class="card" id="feedback">
+      <label>Écran concerné <select name="screen">${options}</select></label>
+      <label>Ton retour <textarea name="message" rows="6" maxlength="2000" required
+        placeholder="Ce qui bloque, ce qui manque, ce qui est bien…"></textarea></label>
+      <button class="primary block">Envoyer</button>
+      <p class="hint">Le texte part par la feuille de partage (Messages, Notes…).
+        Seuls l'écran, la version de l'app et la version d'iOS sont ajoutés, aucune donnée de l'app.</p>
+    </form>`;
+  const form = view.querySelector("#feedback");
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const screen = form.screen.value;
+    const text = feedbackText({
+      key: screen,
+      detail: screen === key ? detail : "",
+      message: form.message.value,
+      version: await appVersion(),
+      userAgent: navigator.userAgent,
+      standalone: matchMedia("(display-mode: standalone)").matches || navigator.standalone === true,
+    });
+    try {
+      if (navigator.share) {
+        await navigator.share({ text });
+      } else {
+        await navigator.clipboard.writeText(text);
+        flash("Texte copié : colle-le dans un message.");
+        return;
+      }
+      form.reset();
+      flash("Merci pour ton retour !");
+    } catch (error) {
+      if (error.name !== "AbortError") flash(`Envoi impossible : ${error.message}`, true);
+    }
   });
 }

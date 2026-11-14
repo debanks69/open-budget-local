@@ -25,6 +25,7 @@ offline use.
 - `js/db.js`: IndexedDB wrapper. `js/money.js`: cents parsing and format.
 - `js/categories.js`: default categories. `js/backup.js`: export format.
 - `js/bank.js`: OFX reading, duplicate check, learned rules.
+- `js/feedback.js`: text of the "Envoyer un retour" form.
 - `sw.js`: offline cache. Bump `VERSION` at each change.
 
 ## Run on the computer

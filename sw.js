@@ -1,7 +1,7 @@
 // Offline support: cache the app shell, serve it cache first.
 // Bump VERSION at each release so phones fetch the new files.
 
-const VERSION = "v4";
+const VERSION = "v5";
 const CACHE = `open-budget-local-${VERSION}`;
 const SHELL = [
   "./",
@@ -21,6 +21,7 @@ const SHELL = [
   "js/ui.js",
   "js/screens-ops.js",
   "js/screens-more.js",
+  "js/feedback.js",
 ];
 
 self.addEventListener("install", (event) => {
