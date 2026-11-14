@@ -37,8 +37,8 @@ node --test local/tests/*.test.mjs
 
 The iPhone needs the files over HTTPS. Two ways:
 
-1. **Hosted** (target): publish the `local/` folder on a static host
-   (see decisions). Open the URL in Safari.
+1. **Hosted**: open <https://debanks69.github.io/open-budget-local/>
+   in Safari.
 2. **Quick test from the Mac**, if the Mac and the iPhone are on the
    same tailnet: `tailscale serve --bg 8766` on the Mac, then open the
    `https://<mac-name>.<tailnet>.ts.net` URL in Safari. Stop it with
@@ -55,6 +55,23 @@ Then:
    Fichiers".
 4. Turn on airplane mode, close and reopen the app: it must work.
 5. Restore: "Sauvegarde" > choose the JSON file.
+
+## Deploy
+
+The source of truth is the `local/` folder of the private repo
+`debanks69/open-budget`. The public repo `debanks69/open-budget-local`
+gets only this folder, and GitHub Pages serves its `main` branch.
+
+1. Bump `VERSION` in `sw.js`, or installed apps keep the old files.
+2. Commit in the private repo.
+3. From the private repo root, run this command (bash or zsh):
+
+```bash
+git push https://github.com/debanks69/open-budget-local.git "$(git subtree split --prefix local HEAD):refs/heads/main"
+```
+
+The installed app gets the new version at the second start: the first
+start installs the new service worker.
 
 ## Data loss risks
 
