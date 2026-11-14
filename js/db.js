@@ -1,12 +1,22 @@
 // Small IndexedDB wrapper. All data of the app lives here, on the device.
 //
-// Stores:
-//   operations: { id, date, type, amountCents, categoryId, comment, label,
-//                 importRef, isPro, reimbursementStatus, createdAt }
-//   meta:       key/value pairs (lastExportAt, rules)
+// Stores (same model as the server app, single user, no sharing):
+//   accounts:      { id, name, kind, initialBalanceCents, archived }
+//   operations:    { id, date, type, amountCents, accountId, toAccountId,
+//                    categoryId, comment, label, importRef, isPro,
+//                    reimbursementStatus, reimbursedById, createdAt }
+//   projects:      { id, name, description, targetCents, targetDate }
+//   contributions: { id, projectId, date, amountCents, accountId,
+//                    operationId, comment }
+//   purchases:     { id, name, categoryId, estimatedCents, priority,
+//                    comment, status, projectId }
+//   meta:          key/value pairs (lastExportAt, rules, lastAccountId)
 
 const DB_NAME = "open-budget-local";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
+
+/** Stores saved in the export file, in restore order. */
+export const DATA_STORES = ["accounts", "operations", "projects", "contributions", "purchases"];
 
 let dbPromise = null;
 
@@ -28,11 +38,18 @@ function done(tx) {
 export function openDb() {
   if (!dbPromise) {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (event) => {
       const db = request.result;
-      const ops = db.createObjectStore("operations", { keyPath: "id" });
-      ops.createIndex("date", "date");
-      db.createObjectStore("meta");
+      if (event.oldVersion < 1) {
+        const ops = db.createObjectStore("operations", { keyPath: "id" });
+        ops.createIndex("date", "date");
+        db.createObjectStore("meta");
+      }
+      if (event.oldVersion < 2) {
+        for (const name of ["accounts", "projects", "contributions", "purchases"]) {
+          db.createObjectStore(name, { keyPath: "id" });
+        }
+      }
     };
     dbPromise = promisify(request);
   }
@@ -44,45 +61,37 @@ async function store(name, mode = "readonly") {
   return db.transaction(name, mode).objectStore(name);
 }
 
-export async function allOperations() {
-  return promisify((await store("operations")).getAll());
+export async function all(name) {
+  return promisify((await store(name)).getAll());
 }
 
-export async function operationsBetween(startDate, endDate) {
-  // Dates are ISO strings 'YYYY-MM-DD', so string order is date order.
-  const index = (await store("operations")).index("date");
-  return promisify(index.getAll(IDBKeyRange.bound(startDate, endDate)));
+export async function get(name, id) {
+  return promisify((await store(name)).get(id));
 }
 
-export async function putOperation(op) {
-  const s = await store("operations", "readwrite");
-  await promisify(s.put(op));
+/** Write one or many records in one transaction: all or nothing. */
+export async function put(name, records) {
+  const s = await store(name, "readwrite");
+  for (const record of Array.isArray(records) ? records : [records]) s.put(record);
   await done(s.transaction);
 }
 
-/** Write many operations in one transaction: all or nothing. */
-export async function putOperations(operations) {
-  const s = await store("operations", "readwrite");
-  for (const op of operations) s.put(op);
+export async function remove(name, ids) {
+  const s = await store(name, "readwrite");
+  for (const id of Array.isArray(ids) ? ids : [ids]) s.delete(id);
   await done(s.transaction);
 }
 
-export async function getOperation(id) {
-  return promisify((await store("operations")).get(id));
-}
-
-export async function deleteOperation(id) {
-  const s = await store("operations", "readwrite");
-  s.delete(id);
-  await done(s.transaction);
-}
-
-/** Replace all operations in one transaction: all or nothing. */
-export async function replaceOperations(operations) {
-  const s = await store("operations", "readwrite");
-  s.clear();
-  for (const op of operations) s.put(op);
-  await done(s.transaction);
+/** Replace all data stores in one transaction (restore of a backup). */
+export async function replaceAll(data) {
+  const db = await openDb();
+  const tx = db.transaction(DATA_STORES, "readwrite");
+  for (const name of DATA_STORES) {
+    const s = tx.objectStore(name);
+    s.clear();
+    for (const record of data[name] || []) s.put(record);
+  }
+  await done(tx);
 }
 
 export async function getMeta(key) {
@@ -94,3 +103,8 @@ export async function setMeta(key, value) {
   s.put(value, key);
   await done(s.transaction);
 }
+
+// Short names used by the screens.
+export const allOperations = () => all("operations");
+export const getOperation = (id) => get("operations", id);
+export const putOperations = (ops) => put("operations", ops);

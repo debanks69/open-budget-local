@@ -59,13 +59,14 @@ const ruleKey = (kind, key) => `${kind}|${key}`;
  * Turn bank lines into new operations. Skip lines already imported.
  * rules: { "expense|KEY": categoryId }. Return { operations, skipped, classified }.
  */
-export function importLines(existing, lines, rules, now = new Date()) {
+export function importLines(existing, lines, rules, accountId = null, now = new Date()) {
   const known = new Set(existing.map((op) => op.importRef).filter(Boolean));
   const operations = [];
   let skipped = 0;
   let classified = 0;
   for (const line of lines) {
-    // FITID is unique per account only, and the app has no accounts.
+    // FITID is unique per account only; files imported before accounts
+    // existed have no account in the key, so the key stays without it.
     const ref = `${line.fitid}|${line.date}|${line.amountCents}`;
     if (known.has(ref) || line.amountCents === 0) {
       skipped += 1;
@@ -80,12 +81,15 @@ export function importLines(existing, lines, rules, now = new Date()) {
       date: line.date,
       type,
       amountCents: Math.abs(line.amountCents),
+      accountId,
+      toAccountId: null,
       categoryId: ruled || IMPORT_ID[type],
       comment: "",
       label: line.label.slice(0, 200),
       importRef: ref,
       isPro: false,
       reimbursementStatus: null,
+      reimbursedById: null,
       createdAt: now.toISOString(),
     });
   }

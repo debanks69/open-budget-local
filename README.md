@@ -5,16 +5,23 @@ data stays in the browser storage (IndexedDB) of the phone. Single user,
 no login. Design choices: `docs/decisions.md`, section "Local-first
 prototype".
 
-Features: quick entry (amount first, expense or income, 8 most used
-categories, "Note de frais" toggle), operations of the month with
-delete, pending expense reports with "Remboursé", JSON export and
-import, bank OFX import with the "À classer" screen and learned rules,
+Features: same screens as the server app. Home (available balance,
+month totals, savings and investments, pending expense reports), quick
+entry (expense, income, transfer; "Note de frais" toggle), operations
+(month grid, filters, search behind 🔍, "À catégoriser" tab), operation
+page (edit, project assignment, reimbursement link), projects with
+contributions, accounts, purchase list, read-only categories, expense
+reports, bank OFX import with learned rules, JSON export and import,
 offline use.
 
 ## Files
 
-- `index.html`, `style.css` (copied from the server app), `icon*`.
-- `js/app.js`: screens and routing (URL hash).
+- `index.html`, `style.css` (the server stylesheet plus a few local
+  rules at the end), `icon*`.
+- `js/app.js`: routing (URL hash) and data migration at start.
+- `js/screens-ops.js`: home, entry, operations, expense reports.
+- `js/screens-more.js`: projects and the pages of the "Plus" menu.
+- `js/ui.js`: shared HTML helpers. `js/ledger.js`: balances and totals.
 - `js/db.js`: IndexedDB wrapper. `js/money.js`: cents parsing and format.
 - `js/categories.js`: default categories. `js/backup.js`: export format.
 - `js/bank.js`: OFX reading, duplicate check, learned rules.
@@ -52,11 +59,11 @@ Then:
 1. In Safari, tap Partager, then "Sur l'écran d'accueil". Install
    **before** you enter data: the Home Screen app has its own storage,
    separate from Safari.
-2. Open the app from the icon. Check "Sauvegarde" > "Stockage".
+2. Open the app from the icon. Check "Plus" > "Sauvegarde" > "Stockage".
 3. Enter some operations, then "Exporter (JSON)" > "Enregistrer dans
    Fichiers".
 4. Turn on airplane mode, close and reopen the app: it must work.
-5. Restore: "Sauvegarde" > choose the JSON file.
+5. Restore: "Plus" > "Sauvegarde" > choose the JSON file.
 
 ## Deploy
 
