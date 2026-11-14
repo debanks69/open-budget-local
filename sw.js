@@ -1,7 +1,7 @@
 // Offline support: cache the app shell, serve it cache first.
 // Bump VERSION at each release so phones fetch the new files.
 
-const VERSION = "v1";
+const VERSION = "v2";
 const CACHE = `open-budget-local-${VERSION}`;
 const SHELL = [
   "./",
@@ -16,6 +16,7 @@ const SHELL = [
   "js/money.js",
   "js/categories.js",
   "js/backup.js",
+  "js/bank.js",
 ];
 
 self.addEventListener("install", (event) => {

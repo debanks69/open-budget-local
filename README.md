@@ -8,7 +8,8 @@ prototype".
 Features: quick entry (amount first, expense or income, 8 most used
 categories, "Note de frais" toggle), operations of the month with
 delete, pending expense reports with "Remboursé", JSON export and
-import, offline use.
+import, bank OFX import with the "À classer" screen and learned rules,
+offline use.
 
 ## Files
 
@@ -16,6 +17,7 @@ import, offline use.
 - `js/app.js`: screens and routing (URL hash).
 - `js/db.js`: IndexedDB wrapper. `js/money.js`: cents parsing and format.
 - `js/categories.js`: default categories. `js/backup.js`: export format.
+- `js/bank.js`: OFX reading, duplicate check, learned rules.
 - `sw.js`: offline cache. Bump `VERSION` at each change.
 
 ## Run on the computer

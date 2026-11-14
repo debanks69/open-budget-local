@@ -2,8 +2,9 @@
 
 import * as db from "./db.js";
 import { parseCents, formatEur } from "./money.js";
-import { TREE, BY_ID, topCategories } from "./categories.js";
-import { buildExport, exportFileName, validateImport } from "./backup.js";
+import { TREE, BY_ID, topCategories, currentCategoryId } from "./categories.js";
+import { buildExport, exportFileName, validateImport, validateRules } from "./backup.js";
+import { decodeOfx, parseOfx, importLines, groupsToClassify, classifyGroup } from "./bank.js";
 
 const view = document.getElementById("view");
 const flashBox = document.getElementById("flash");
@@ -54,7 +55,7 @@ function opRow(op, actions = "") {
   return `<div class="op-row">
     <span class="op-icon ${op.type}">${icon}</span>
     <span class="op-main"><strong>${esc(name)}</strong>
-      <small>${esc(op.comment) || shortDate(op.date)} ${tags}</small></span>
+      <small>${esc(op.comment || op.label || "") || shortDate(op.date)} ${tags}</small></span>
     <span class="op-amount ${op.type}">${signedAmount(op)}</span>
     ${actions}
   </div>`;
@@ -272,12 +273,20 @@ async function renderBackup() {
       <p class="hint">Remplace toutes les données par celles du fichier.</p>
       <input type="file" id="import" accept="application/json,.json">
     </div>
+    <div class="card">
+      <h2>Import bancaire (OFX)</h2>
+      <p class="hint">Ajoute les opérations du relevé de ta banque. Les numéros de compte ne sont pas lus,
+        les opérations déjà importées sont ignorées.</p>
+      <input type="file" id="ofx" accept=".ofx,.qfx">
+      <p><a href="#/classify">📥 Opérations à classer</a></p>
+    </div>
     <div class="card"><h2>Stockage</h2><p class="hint" id="storage">…</p></div>`;
 
   storageStatus().then((html) => { view.querySelector("#storage").innerHTML = html; });
 
   const makeFile = async () => {
-    const json = JSON.stringify(buildExport(await db.allOperations()), null, 1);
+    const rules = (await db.getMeta("rules")) || {};
+    const json = JSON.stringify(buildExport(await db.allOperations(), new Date(), rules), null, 1);
     return new File([json], exportFileName(), { type: "application/json" });
   };
   const markExported = async () => {
@@ -319,8 +328,11 @@ async function renderBackup() {
     const file = e.target.files[0];
     if (!file) return;
     let operations;
+    let rules;
     try {
-      operations = validateImport(JSON.parse(await file.text()));
+      const data = JSON.parse(await file.text());
+      operations = validateImport(data);
+      rules = validateRules(data);
     } catch (error) {
       flash(error instanceof SyntaxError ? "Fichier JSON illisible." : error.message, true);
       e.target.value = "";
@@ -332,9 +344,70 @@ async function renderBackup() {
       return;
     }
     await db.replaceOperations(operations);
+    await db.setMeta("rules", rules);
     flash(`${operations.length} opérations restaurées.`);
     renderBackup();
   });
+
+  view.querySelector("#ofx").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const { operations, skipped, classified } = await importOfx(file);
+      flash(`${operations.length} opérations importées, dont ${classified} classées par tes règles. ${skipped} déjà présentes.`);
+      location.hash = "#/classify";
+    } catch (error) {
+      flash(error.message, true);
+      e.target.value = "";
+    }
+  });
+}
+
+async function importOfx(file) {
+  const statements = parseOfx(decodeOfx(new Uint8Array(await file.arrayBuffer())));
+  const lines = statements.flat();
+  const rules = (await db.getMeta("rules")) || {};
+  const result = importLines(await db.allOperations(), lines, rules);
+  await db.putOperations(result.operations);
+  return result;
+}
+
+// --- Bank import: classify ---------------------------------------------------
+
+async function renderClassify() {
+  const groups = groupsToClassify(await db.allOperations()).slice(0, 50);
+  const options = (kind) => TREE[kind]
+    .filter((p) => p.name !== "Import")
+    .map((p) => `<option value="${p.id}">${p.icon} ${esc(p.name)}</option>${
+      p.children.map((c) => `<option value="${c.id}">&nbsp;&nbsp;&nbsp;${esc(c.name)}</option>`).join("")}`)
+    .join("");
+  view.innerHTML = `
+    <div class="top"><h1>À classer</h1></div>
+    ${groups.length ? `<p class="hint">Opérations importées, regroupées par libellé. Le choix s'applique
+      au groupe et sert de règle pour les prochains imports.</p>` : '<p class="card">Rien à classer ✓</p>'}
+    ${groups.map((g, i) => `<form class="card stack" data-index="${i}">
+      <div><strong>${esc(g.example)}</strong>
+        <small class="muted">${g.count} opération${g.count > 1 ? "s" : ""} ·
+        ${g.kind === "expense" ? formatEur(-g.totalCents) : formatEur(g.totalCents, true)}</small></div>
+      <div class="inline-form">
+        <select name="category" required aria-label="Catégorie">
+          <option value="">— Catégorie —</option>${options(g.kind)}</select>
+        <button>OK</button>
+      </div>
+    </form>`).join("")}`;
+
+  view.querySelectorAll("form[data-index]").forEach((form) => form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const group = groups[Number(form.dataset.index)];
+    const categoryId = form.elements.category.value;
+    if (!categoryId) return;
+    const rules = (await db.getMeta("rules")) || {};
+    const result = classifyGroup(await db.allOperations(), rules, group.kind, group.key, categoryId);
+    await db.putOperations(result.changed);
+    await db.setMeta("rules", result.rules);
+    flash(`${result.changed.length} opérations classées dans ${BY_ID.get(categoryId).name} ✓`);
+    renderClassify();
+  }));
 }
 
 // --- Router ------------------------------------------------------------------
@@ -342,11 +415,12 @@ async function renderBackup() {
 async function route() {
   const [, page = "add", arg] = location.hash.split("/");
   document.querySelectorAll(".tabbar a").forEach((a) =>
-    a.classList.toggle("active", a.dataset.tab === page));
+    a.classList.toggle("active", a.dataset.tab === (page === "classify" ? "backup" : page)));
   try {
     if (page === "ops") await renderOps(/^\d{4}-\d{2}$/.test(arg) ? arg : isoDate().slice(0, 7));
     else if (page === "reports") await renderReports();
     else if (page === "backup") await renderBackup();
+    else if (page === "classify") await renderClassify();
     else await renderAdd(arg === "income" ? "income" : "expense");
   } catch (error) {
     view.innerHTML = `<p class="error">Erreur : ${esc(error.message)}</p>`;
@@ -354,8 +428,16 @@ async function route() {
   }
 }
 
+/** Translate category ids of the first list. Runs at each start, cheap. */
+async function migrateCategories() {
+  for (const op of await db.allOperations()) {
+    const id = op.categoryId == null ? null : currentCategoryId(op.categoryId);
+    if (id !== op.categoryId) await db.putOperation({ ...op, categoryId: id });
+  }
+}
+
 window.addEventListener("hashchange", route);
-route();
+migrateCategories().catch((error) => console.error(error)).finally(route);
 
 // Ask the browser not to evict our data. Safari grants it more easily
 // to a Home Screen web app.

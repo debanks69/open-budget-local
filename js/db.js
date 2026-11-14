@@ -1,9 +1,9 @@
 // Small IndexedDB wrapper. All data of the app lives here, on the device.
 //
 // Stores:
-//   operations: { id, date, type, amountCents, categoryId, comment,
-//                 isPro, reimbursementStatus, createdAt }
-//   meta:       key/value pairs (for example lastExportAt)
+//   operations: { id, date, type, amountCents, categoryId, comment, label,
+//                 importRef, isPro, reimbursementStatus, createdAt }
+//   meta:       key/value pairs (lastExportAt, rules)
 
 const DB_NAME = "open-budget-local";
 const DB_VERSION = 1;
@@ -57,6 +57,13 @@ export async function operationsBetween(startDate, endDate) {
 export async function putOperation(op) {
   const s = await store("operations", "readwrite");
   await promisify(s.put(op));
+  await done(s.transaction);
+}
+
+/** Write many operations in one transaction: all or nothing. */
+export async function putOperations(operations) {
+  const s = await store("operations", "readwrite");
+  for (const op of operations) s.put(op);
   await done(s.transaction);
 }
 
