@@ -213,6 +213,7 @@ details[open] > summary { margin-bottom: 12px; }
 .cat-group { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .chip { padding: 6px 10px; font-size: .85rem; border-radius: 20px; }
 .chip.strong { font-weight: 600; }
+.cat-group-title { flex-basis: 100%; margin: 4px 0 0; font-weight: 600; font-size: .9rem; }
 
 /* Filters */
 .filters { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }

@@ -4,16 +4,18 @@
 
 const EXPENSE = [
   ["charges-fixes", "Loyer & charges fixes", "🏠", [
-    ["Logement", "🏠"], ["Charges", "💡"], ["Assurances", "🛡️"], ["Impôts & frais bancaires", "🧾"],
+    ["Logement", "🔑"], ["Charges", "💡"], ["Assurances", "🛡️"], ["Impôts & frais bancaires", "🧾"],
   ]],
-  ["essentiel", "Dépenses essentielles & quotidien", "🛒", [
+  ["essentiel", "Dépenses essentielles & quotidien", "🧺", [
     ["Courses", "🛒"], ["Cantine", "🥪"], ["Transport", "🚆"], ["Santé", "💊"],
-    ["Abonnements & télécoms", "📱"], ["Animaux", "🐾"],
+    ["Abonnements & télécoms", "📱"], ["Animaux", "🐾"], ["Maison & bricolage", "🛠️"], ["Coiffure & soins", "💇"],
   ]],
   ["perso", "Loisirs & dépenses personnelles", "🎉", [
-    ["Restaurants", "🍽️"], ["Cafés & bars", "☕"], ["Sport", "🥊"], ["Loisirs & sorties", "🎟️"],
+    ["Restaurants", "🍽️"], ["Cafés & bars", "☕"], ["Sport", "🥊"], ["Cinéma", "🎬"],
+    ["Concerts & spectacles", "🎭"], ["Livres & jeux", "📚"], ["Loisirs & sorties", "🎟️"],
     ["Shopping", "🛍️"], ["Voyages", "✈️"], ["Cadeaux & dons", "🎁"],
   ]],
+  ["virements", "Virements à des proches", "💸", [["Famille", "👨‍👩‍👧"], ["Amis", "🧑‍🤝‍🧑"], ["Autres personnes", "🤝"]]],
   ["epargne", "Épargne & investissements", "💰", []],
   ["pro", "Dépenses pro", "💼", [["Hôtels", "🏨"], ["Repas", "🍴"], ["Autres", "📎"]]],
   ["import-depense", "Import", "📥", []],
@@ -21,8 +23,8 @@ const EXPENSE = [
 
 const INCOME = [
   ["revenus", "Revenus", "💶", [
-    ["Salaire", "💼"], ["Revenus d'investissement", "📈"], ["Remboursements", "↩️"],
-    ["Ventes", "🏷️"], ["Cadeaux reçus", "🎁"], ["Autres revenus", "➕"],
+    ["Salaire", "💵"], ["Revenus d'investissement", "📈"], ["Remboursements", "↩️"],
+    ["Ventes", "🏷️"], ["Cadeaux reçus", "🎀"], ["Virements de proches", "🤲"], ["Autres revenus", "➕"],
   ]],
   ["import-revenu", "Import", "📥", []],
 ];

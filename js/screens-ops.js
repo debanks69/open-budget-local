@@ -139,8 +139,10 @@ export async function renderAdd(type) {
         </div>
         <details class="more-cats"><summary>Toutes les catégories</summary>
           ${TREE[type].filter((p) => p.id !== IMPORT_ID[type]).map((p) => `<div class="cat-group">
-            <button type="button" data-cat="${p.id}" class="chip strong">${p.icon} ${esc(p.name)}</button>
-            ${p.children.map((c) => `<button type="button" data-cat="${c.id}" class="chip">${esc(c.name)}</button>`).join("")}
+            ${p.children.length
+              ? `<p class="cat-group-title">${p.icon} ${esc(p.name)}</p>${p.children.map((c) =>
+                `<button type="button" data-cat="${c.id}" class="chip">${c.icon} ${esc(c.name)}</button>`).join("")}`
+              : `<button type="button" data-cat="${p.id}" class="chip strong">${p.icon} ${esc(p.name)}</button>`}
           </div>`).join("")}
           <button type="button" data-cat="" class="chip">Sans catégorie</button>
         </details>
@@ -292,7 +294,7 @@ export async function renderOps(ym, scope = null) {
   }
   periodOps.sort(newestFirst);
   const next = ym === "all" ? null : shiftMonth(ym, 1);
-  const catOptions = ["expense", "income"].map((k) => categoryOptions(k, filters.cat, "").replace('<option value=""></option>', "")).join("");
+  const catOptions = ["expense", "income"].map((k) => categoryOptions(k, filters.cat, "", true, true).replace('<option value=""></option>', "")).join("");
 
   view.innerHTML = `
     <header class="top"><h1>Dépenses et revenus</h1>

@@ -127,12 +127,19 @@ export function opsByDay(ops, accounts) {
 
 export const newestFirst = (a, b) => b.date.localeCompare(a.date) || (b.createdAt || "").localeCompare(a.createdAt || "");
 
-export function categoryOptions(kind, selected = null, emptyLabel = "— Aucune —", withImport = true) {
+/**
+ * A group (top-level category with sub-categories) is a heading, not a
+ * choice. Filters pass `groupsSelectable` to select a whole group.
+ */
+export function categoryOptions(kind, selected = null, emptyLabel = "— Aucune —", withImport = true, groupsSelectable = false) {
   const tree = TREE[kind].filter((p) => withImport || p.name !== "Import");
-  return `<option value="">${esc(emptyLabel)}</option>${tree.map((p) =>
-    `<option value="${p.id}" ${p.id === selected ? "selected" : ""}>${p.icon} ${esc(p.name)}</option>${
-      p.children.map((c) => `<option value="${c.id}" ${c.id === selected ? "selected" : ""}>&nbsp;&nbsp;&nbsp;${esc(c.name)}</option>`).join("")}`
-  ).join("")}`;
+  const option = (c, text) =>
+    `<option value="${c.id}" ${c.id === selected ? "selected" : ""}>${text}</option>`;
+  return `<option value="">${esc(emptyLabel)}</option>${tree.map((p) => {
+    const children = p.children.map((c) => option(c, `${groupsSelectable ? "&nbsp;&nbsp;&nbsp;" : ""}${c.icon || p.icon} ${esc(c.name)}`)).join("");
+    if (!p.children.length || groupsSelectable) return option(p, `${p.icon} ${esc(p.name)}`) + children;
+    return `<optgroup label="${p.icon} ${esc(p.name)}">${children}</optgroup>`;
+  }).join("")}`;
 }
 
 export function accountOptions(accounts, selected = null) {
