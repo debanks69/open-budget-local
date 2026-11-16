@@ -13,6 +13,7 @@ import {
 import {
   view, esc, isoDate, frDate, flash, newId, loadAll, byId, fullCategoryName,
   categoryOptions, accountOptions, progressBar, header, formCents, amountInput,
+  monthField, bindMonthFields, monthLabel,
 } from "./ui.js";
 import { SCREENS, screenOf, feedbackText } from "./feedback.js";
 
@@ -37,7 +38,7 @@ const options = (map, selected, empty = null) =>
 function projectFields(p = {}) {
   return `<label>Nom <input name="name" value="${esc(p.name)}" placeholder="Voyage au Japon" required maxlength="100"></label>
     <label>Montant cible (€) <input name="target" inputmode="decimal" value="${p.targetCents != null ? amountInput(p.targetCents) : ""}" required></label>
-    <label>Date cible <input type="date" name="targetDate" value="${p.targetDate || ""}"></label>
+    <div><label>Mois cible</label>${monthField("targetMonth", p.targetDate ? p.targetDate.slice(0, 7) : "")}</div>
     <label>Description <textarea name="description" rows="2" maxlength="500">${esc(p.description)}</textarea></label>`;
 }
 
@@ -45,7 +46,8 @@ function readProject(f) {
   return {
     name: f.name.value.trim(),
     targetCents: formCents(f.target.value, { allowEmpty: true }),
-    targetDate: f.targetDate.value || null,
+    // A target is a month: stored as its first day, like the server app.
+    targetDate: f.targetMonth.value ? `${f.targetMonth.value}-01` : null,
     description: f.description.value.trim(),
   };
 }
@@ -59,12 +61,13 @@ export async function renderProjects() {
       const percent = projectProgress(p, saved);
       return `<a class="project-row card" href="#/project/${p.id}">
         <span><strong>${esc(p.name)}</strong><small>${formatEur(saved)} / ${formatEur(p.targetCents)}${
-          p.targetDate ? ` · d'ici le ${frDate(p.targetDate)}` : ""}</small></span>
+          p.targetDate ? ` · d'ici ${monthLabel(p.targetDate.slice(0, 7)).toLowerCase()}` : ""}</small></span>
         <span class="muted">${percent} %</span>${progressBar(percent)}</a>`;
     }).join("") || '<p class="muted">Aucun projet pour l\'instant.</p>'}
     <details class="card" ${projects.length ? "" : "open"}><summary>＋ Nouveau projet</summary>
       <form id="new" class="stack">${projectFields()}<button class="primary">Créer</button></form>
     </details>`;
+  bindMonthFields(view);
   onSubmit(view.querySelector("#new"), async (f) => {
     const project = { id: newId(), ...readProject(f) };
     await db.put("projects", project);
@@ -96,7 +99,7 @@ export async function renderProject(id) {
         <div><small>Reste</small><strong>${formatEur(Math.max(project.targetCents - saved, 0))}</strong></div>
       </div>
       ${progressBar(percent)}
-      <p class="muted">${percent} %${project.targetDate ? ` · objectif le ${frDate(project.targetDate)}` : ""}</p>
+      <p class="muted">${percent} %${project.targetDate ? ` · objectif d'ici ${monthLabel(project.targetDate.slice(0, 7)).toLowerCase()}` : ""}</p>
     </section>
     <section><h2>Versements</h2>
       ${contributions.map((c) => `<div class="list-row">
@@ -135,6 +138,7 @@ export async function renderProject(id) {
     await db.remove("contributions", b.dataset.delete);
     renderProject(id);
   }));
+  bindMonthFields(view);
   onSubmit(view.querySelector("#edit"), async (f) => {
     await db.put("projects", { ...project, ...readProject(f) });
     flash("Projet enregistré.");
@@ -152,19 +156,28 @@ export async function renderProject(id) {
 
 // --- "Plus" menu -----------------------------------------------------------------
 
-export function renderMore() {
+export async function renderMore() {
+  const pro = await db.hasExpenseReports();
   view.innerHTML = `<header class="top"><h1>Plus</h1></header>
     <nav class="menu">
       <a href="#/accounts">🏦 Comptes et épargne</a>
       <a href="#/purchases">🛍️ Liste d'achats</a>
       <a href="#/categories">🏷️ Catégories</a>
-      <a href="#/reports">🧾 Notes de frais</a>
       <a href="#/import">📥 Import bancaire (OFX)</a>
       <a href="#/backup">💾 Sauvegarde</a>
       <a href="#/feedback">💬 Envoyer un retour</a>
     </nav>
+    <form class="card stack" id="settings">
+      <h2>Réglages</h2>
+      <label class="check"><input type="checkbox" name="hasExpenseReports" ${pro ? "checked" : ""}>
+        <span>J'ai des notes de frais <small class="muted">(dépenses pro remboursées par l'employeur)</small></span></label>
+    </form>
     <p class="muted">Bientôt : statistiques, budgets mensuels, récurrences.</p>
     <p class="hint">Les données restent sur ce téléphone. Exporte-les régulièrement depuis « Sauvegarde ».</p>`;
+  view.querySelector("#settings").addEventListener("change", async (e) => {
+    await db.setMeta("hasExpenseReports", e.target.checked);
+    flash("Réglages enregistrés ✓");
+  });
 }
 
 // --- Accounts ------------------------------------------------------------------------

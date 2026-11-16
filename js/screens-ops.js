@@ -42,6 +42,7 @@ export async function renderHome() {
   const previous = monthSummary(data.operations, shiftMonth(ym, -1));
   const pending = data.operations.filter((o) => o.reimbursementStatus === "pending");
   const pendingTotal = pending.reduce((s, o) => s + o.amountCents, 0);
+  const pro = await db.hasExpenseReports();
   const recent = [...data.operations].sort(newestFirst).slice(0, 5);
   const projects = [...data.projects].sort((a, b) => a.name.localeCompare(b.name, "fr")).slice(0, 3);
   const diff = previous.expensesCents
@@ -69,10 +70,9 @@ export async function renderHome() {
         <strong>${formatEur(kindTotal(balances, "savings"))}</strong><small>Livrets</small></a>
       <a class="tile" href="#/accounts"><small>Placements</small>
         <strong>${formatEur(kindTotal(balances, "investment"))}</strong><small>Investissements</small></a>
-      <a class="tile ${pending.length ? "warn" : ""}" href="#/reports">
+      ${pro ? `<a class="tile ${pending.length ? "warn" : ""}" href="#/reports">
         <small>Notes de frais en attente</small><strong>${formatEur(pendingTotal)}</strong>
-        <small>${pending.length} dépense${pending.length > 1 ? "s" : ""}</small>
-      </a>
+        <small>${pending.length} dépense${pending.length > 1 ? "s" : ""}</small></a>` : ""}
     </div>
     <a class="button primary block" href="#/add/expense">＋ Ajouter une dépense</a>
     <section>
@@ -107,6 +107,7 @@ export async function renderAdd(type) {
   const accounts = data.accounts.filter((a) => !a.archived);
   const lastAccount = (await db.getMeta("lastAccountId")) || accounts[0]?.id;
   const pending = data.operations.filter((o) => o.reimbursementStatus === "pending").sort(newestFirst);
+  const pro = await db.hasExpenseReports();
   const tabs = `<nav class="segmented" aria-label="Type">
     ${[["expense", "Dépense"], ["income", "Revenu"], ["transfer", "Transfert"]].map(([key, label]) =>
       `<a href="#/add/${key}" class="${type === key ? "active" : ""}">${label}</a>`).join("")}
@@ -130,9 +131,9 @@ export async function renderAdd(type) {
     const top = topCategories(data.operations, type);
     view.innerHTML = `${tabs}
       <form class="quick" id="quick" novalidate>${amount}
-        <label class="pro-toggle"><input type="checkbox" name="isPro">
+        ${pro ? `<label class="pro-toggle"><input type="checkbox" name="isPro">
           <span>💼 ${type === "expense" ? "Note de frais <small>pro, à rembourser</small>" : "Remboursement pro"}</span>
-        </label>
+        </label>` : ""}
         <p class="hint">Touche une catégorie pour enregistrer.</p>
         <div class="cat-grid">
           ${top.map((c) => `<button type="button" data-cat="${c.id}"><span>${c.icon || BY_ID.get(c.parentId)?.icon || "•"}</span>${esc(c.name)}</button>`).join("")}
@@ -150,7 +151,7 @@ export async function renderAdd(type) {
           <div class="stack">
             <label>Compte <select name="accountId">${accountOptions(accounts, lastAccount)}</select></label>
             <label>Date <input type="date" name="date" value="${isoDate()}"></label>
-            ${type === "income" ? pendingChecklist(pending) : ""}
+            ${type === "income" && pro ? pendingChecklist(pending) : ""}
             <label>Commentaire <input name="comment" maxlength="500"></label>
           </div>
         </details>
@@ -210,7 +211,7 @@ export async function renderAdd(type) {
     if (!button) return;
     const amountCents = readAmount();
     if (amountCents === null) return;
-    const isPro = form.elements.isPro.checked;
+    const isPro = Boolean(form.elements.isPro?.checked);
     const op = {
       ...base(),
       amountCents,
@@ -287,6 +288,8 @@ export async function renderOps(ym, scope = null) {
   const firstYear = Math.min(Number((ym === "all" ? now : ym).slice(0, 4)),
     ...data.operations.map((o) => Number(o.date.slice(0, 4))));
   const toClassify = data.operations.filter(isImported).length;
+  const pro = await db.hasExpenseReports();
+  if (!pro) filters.scope = "";
   let periodOps = data.operations;
   if (ym !== "all") {
     const [start, end] = monthBounds(ym);
@@ -309,11 +312,11 @@ export async function renderOps(ym, scope = null) {
           ${[["expense", "Dépenses"], ["income", "Revenus"], ["transfer", "Transferts"]].map(([k, l]) =>
             `<option value="${k}" ${filters.type === k ? "selected" : ""}>${l}</option>`).join("")}
         </select>
-        <select name="scope" aria-label="Perso ou pro">
+        ${pro ? `<select name="scope" aria-label="Perso ou pro">
           <option value="">Perso + pro</option>
           <option value="perso" ${filters.scope === "perso" ? "selected" : ""}>Perso</option>
           <option value="pro" ${filters.scope === "pro" ? "selected" : ""}>Pro</option>
-        </select>
+        </select>` : ""}
         <select name="cat" aria-label="Catégorie"><option value="">Toutes catégories</option>${catOptions}</select>
       </div>
     </form>
@@ -359,6 +362,8 @@ export async function renderOps(ym, scope = null) {
 
 // --- To categorise -------------------------------------------------------------
 
+const groupEur = (kind, cents) => (kind === "expense" ? formatEur(-cents) : formatEur(cents, true));
+
 export async function renderClassify() {
   const all = await db.allOperations();
   const toClassify = all.filter(isImported).length;
@@ -372,8 +377,8 @@ export async function renderClassify() {
     ${groups.map((g, i) => `<form class="card stack" data-index="${i}">
       <div class="classify-head"><span class="op-icon ${g.kind} unknown" aria-hidden="true">?</span>
         <div><strong>${esc(g.example)}</strong>
-        <small class="muted">${shortDate(g.lastDate)} · ${g.count} opération${g.count > 1 ? "s" : ""} ·
-        ${g.kind === "expense" ? formatEur(-g.totalCents) : formatEur(g.totalCents, true)}</small></div></div>
+        <small class="muted">${g.count > 1 ? "Dernière opération" : "Opération"} : ${shortDate(g.lastDate)} · ${groupEur(g.kind, g.lastCents)}</small>
+        ${g.count > 1 ? `<small class="muted">Total des ${g.count} opérations de ce libellé : ${groupEur(g.kind, g.totalCents)}</small>` : ""}</div></div>
       <div class="inline-form">
         <select name="category" required aria-label="Catégorie">${categoryOptions(g.kind, null, "— Catégorie —", false)}</select>
         <button>OK</button>
@@ -412,6 +417,7 @@ export async function renderOp(id) {
   const free = unassignedCents(op, data.contributions);
   const isTransfer = op.type === "transfer";
   const paidBy = op.reimbursedById ? opsById.get(op.reimbursedById) : null;
+  const pro = await db.hasExpenseReports();
 
   view.innerHTML = `${header("Modifier", ["#/ops", "Opérations"])}
     <form id="op-form" class="stack card">
@@ -425,9 +431,9 @@ export async function renderOp(id) {
       ${isTransfer
         ? `<label>Compte destination <select name="toAccountId">${accountOptions(accounts, op.toAccountId)}</select></label>`
         : `<label>Catégorie <select name="categoryId" id="category">${categoryOptions(op.type, op.categoryId)}</select></label>
-          <label class="check"><input type="checkbox" name="isPro" ${op.isPro ? "checked" : ""}>
-            ${op.type === "expense" ? "Note de frais (pro, à rembourser)" : "Remboursement pro"}</label>`}
-      ${op.type === "income" ? pendingChecklist(pending.filter((e) => e.id !== op.id && e.type === "expense"), op.id) : ""}
+          ${pro ? `<label class="check"><input type="checkbox" name="isPro" ${op.isPro ? "checked" : ""}>
+            ${op.type === "expense" ? "Note de frais (pro, à rembourser)" : "Remboursement pro"}</label>` : ""}`}
+      ${op.type === "income" && pro ? pendingChecklist(pending.filter((e) => e.id !== op.id && e.type === "expense"), op.id) : ""}
       ${paidBy ? `<p class="muted">Remboursée le ${frDate(paidBy.date)} (${formatEur(paidBy.amountCents)}).</p>` : ""}
       <label>Commentaire <input name="comment" value="${esc(op.comment)}" maxlength="500"></label>
       ${op.label ? `<p class="muted">Libellé bancaire : ${esc(op.label)}</p>` : ""}
@@ -462,7 +468,8 @@ export async function renderOp(id) {
       flash("Choisis une catégorie du bon type.", true);
       return;
     }
-    const isPro = !isTransfer && f.isPro.checked;
+    // Option off: no pro fields in the form, the stored pro data stays.
+    const isPro = !isTransfer && (pro ? f.isPro.checked : Boolean(op.isPro));
     const updated = {
       ...op, type, amountCents, categoryId, isPro,
       date: f.date.value || op.date,
@@ -475,7 +482,9 @@ export async function renderOp(id) {
       return;
     }
     // Same rules as the server: a pro expense waits for its reimbursement.
-    if (type === "expense") {
+    if (!pro && !isTransfer) {
+      // Keep reimbursementStatus and reimbursedById as stored.
+    } else if (type === "expense") {
       updated.reimbursementStatus = isPro ? (op.reimbursedById ? "reimbursed" : "pending") : null;
       if (!isPro) updated.reimbursedById = null;
     } else {
@@ -483,7 +492,7 @@ export async function renderOp(id) {
       updated.reimbursedById = null;
     }
     const changed = [updated];
-    if (op.type === "income") {
+    if (op.type === "income" && pro) {
       const checked = new Set([...form.querySelectorAll("[name=reimburses]:checked")].map((c) => c.value));
       for (const e2 of data.operations.filter((o) => o.reimbursedById === op.id && !checked.has(o.id))) {
         changed.push({ ...e2, reimbursedById: null, reimbursementStatus: "pending" });
@@ -543,7 +552,7 @@ export async function renderReports() {
   const total = pending.reduce((s, o) => s + o.amountCents, 0);
   const row = (op, action) => `<div class="report-row">${opRow(op, accounts)}${action}</div>`;
 
-  view.innerHTML = `${header("Notes de frais", ["#/more", "Plus"])}
+  view.innerHTML = `${header("Notes de frais", ["#/", "Accueil"])}
     <div class="hero"><small>À rembourser</small><strong>${formatEur(total)}</strong>
       <small>${pending.length} dépense${pending.length > 1 ? "s" : ""}</small></div>
     ${pending.length > 1 ? '<button class="primary block" id="all">Tout marquer remboursé</button>' : ""}

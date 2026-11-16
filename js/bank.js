@@ -104,11 +104,12 @@ export function groupsToClassify(operations) {
   const groups = new Map();
   for (const op of operations.filter(isImported)) {
     const key = ruleKey(op.type, labelKey(op.label || ""));
-    const group = groups.get(key) || { kind: op.type, key: labelKey(op.label || ""), example: op.label || "(sans libellé)", count: 0, totalCents: 0, lastDate: op.date };
+    const group = groups.get(key) || { kind: op.type, key: labelKey(op.label || ""), example: op.label || "(sans libellé)", count: 0, totalCents: 0, lastDate: op.date, lastCents: op.amountCents };
     group.count += 1;
     group.totalCents += op.amountCents;
     if (op.date > group.lastDate) {
       group.lastDate = op.date;
+      group.lastCents = op.amountCents;
       group.example = op.label || group.example;
     }
     groups.set(key, group);

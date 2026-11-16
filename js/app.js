@@ -2,7 +2,7 @@
 // Screens mirror the server app: Accueil, Opérations, ＋, Projets, Plus.
 
 import * as db from "./db.js";
-import { currentCategoryId } from "./categories.js";
+import { currentCategoryId, currentRules } from "./categories.js";
 import { DEFAULT_ACCOUNT } from "./backup.js";
 import { view, esc, thisMonth } from "./ui.js";
 import {
@@ -14,13 +14,13 @@ import {
 } from "./screens-more.js";
 import { NOT_A_SCREEN } from "./feedback.js";
 
-const MORE_PAGES = ["more", "accounts", "account", "purchases", "purchase", "categories", "reports", "import", "backup", "feedback"];
+const MORE_PAGES = ["more", "accounts", "account", "purchases", "purchase", "categories", "import", "backup", "feedback"];
 
 // Last screen seen outside the "Plus" menu, for the feedback form.
 let lastHash = "";
 
 function activeTab(page) {
-  if (page === "home") return "home";
+  if (page === "home" || page === "reports") return "home";
   if (["ops", "op", "classify"].includes(page)) return "ops";
   if (["projects", "project"].includes(page)) return "projects";
   if (MORE_PAGES.includes(page)) return "more";
@@ -43,7 +43,7 @@ async function route() {
       case "reports": await renderReports(); break;
       case "projects": await renderProjects(); break;
       case "project": await renderProject(arg); break;
-      case "more": renderMore(); break;
+      case "more": await renderMore(); break;
       case "accounts": await renderAccounts(); break;
       case "account": await renderAccount(arg); break;
       case "purchases": await renderPurchases(); break;
@@ -62,7 +62,7 @@ async function route() {
 
 /**
  * Bring stored data to the current model. Runs at each start, cheap:
- * - translate category ids of the first list;
+ * - translate old category ids, in operations and learned rules;
  * - create the default current account (the app had no accounts before);
  * - put operations without an account in the first account.
  */
@@ -83,6 +83,11 @@ async function migrate() {
     }
   }
   if (changed.length) await db.putOperations(changed);
+  const rules = await db.getMeta("rules");
+  if (rules) {
+    const current = currentRules(rules);
+    if (JSON.stringify(current) !== JSON.stringify(rules)) await db.setMeta("rules", current);
+  }
 }
 
 window.addEventListener("hashchange", route);

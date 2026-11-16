@@ -98,6 +98,11 @@ export async function getMeta(key) {
   return promisify((await store("meta")).get(key));
 }
 
+/** "J'ai des notes de frais" setting. On by default. */
+export async function hasExpenseReports() {
+  return (await getMeta("hasExpenseReports")) !== false;
+}
+
 export async function setMeta(key, value) {
   const s = await store("meta", "readwrite");
   s.put(value, key);

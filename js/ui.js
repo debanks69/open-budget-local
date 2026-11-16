@@ -39,6 +39,42 @@ export function monthLabel(ym) {
   return `${MONTHS[m - 1]} ${y}`.replace(/^./, (c) => c.toUpperCase());
 }
 
+/**
+ * Month field with the month grid of the operations screen (radios named
+ * `name`, value "YYYY-MM" or ""). Months before this one are greyed, except
+ * the current value `ym`. Same as `month_field` in the server macros.
+ * Call bindMonthFields after rendering.
+ */
+export function monthField(name, ym = "") {
+  const now = thisMonth();
+  const year = Number(now.slice(0, 4));
+  const valueYear = ym ? Number(ym.slice(0, 4)) : year;
+  let years = "";
+  for (let y = Math.min(year, valueYear); y <= Math.max(year + 5, valueYear); y += 1) {
+    const cells = MONTHS_SHORT.map((label, i) => {
+      const value = `${y}-${String(i + 1).padStart(2, "0")}`;
+      if (value < now && value !== ym) return `<span class="future" aria-disabled="true">${label}</span>`;
+      return `<label class="${value === now ? "now" : ""}"><input type="radio" name="${name}" value="${value}"
+        data-label="${monthLabel(value)}" ${value === ym ? "checked" : ""}>${label}</label>`;
+    }).join("");
+    years += `<div class="month-year">${y}</div><div class="month-grid">${cells}</div>`;
+  }
+  return `<details class="month-picker month-field">
+    <summary>${ym ? monthLabel(ym) : "Pas de date"} ▾</summary>
+    <div class="month-panel">${years}
+      <label class="all-periods"><input type="radio" name="${name}" value="" data-label="Pas de date" ${ym ? "" : "checked"}>Pas de date</label>
+    </div>
+  </details>`;
+}
+
+/** A choice in a month field updates its summary and closes it. */
+export function bindMonthFields(root) {
+  root.querySelectorAll(".month-field").forEach((details) => details.addEventListener("change", (e) => {
+    details.querySelector("summary").textContent = `${e.target.dataset.label} ▾`;
+    details.open = false;
+  }));
+}
+
 /** "Aujourd'hui", "Hier" or "12 novembre 2026", like the server app. */
 export function dayLabel(iso) {
   const today = new Date();

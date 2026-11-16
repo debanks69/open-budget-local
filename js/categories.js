@@ -4,15 +4,16 @@
 
 const EXPENSE = [
   ["charges-fixes", "Loyer & charges fixes", "🏠", [
-    ["Logement", "🔑"], ["Charges", "💡"], ["Assurances", "🛡️"], ["Impôts & frais bancaires", "🧾"],
+    ["Logement", "🔑"], ["Électricité", "⚡"], ["Internet & box", "🌐"], ["Assurances", "🛡️"],
+    ["Impôts & frais bancaires", "🧾"],
   ]],
   ["essentiel", "Dépenses essentielles & quotidien", "🧺", [
     ["Courses", "🛒"], ["Cantine", "🥪"], ["Transport", "🚆"], ["Santé", "💊"],
     ["Abonnements & télécoms", "📱"], ["Animaux", "🐾"], ["Maison & bricolage", "🛠️"], ["Coiffure & soins", "💇"],
   ]],
   ["perso", "Loisirs & dépenses personnelles", "🎉", [
-    ["Restaurants", "🍽️"], ["Cafés & bars", "☕"], ["Sport", "🥊"], ["Cinéma", "🎬"],
-    ["Concerts & spectacles", "🎭"], ["Livres & jeux", "📚"], ["Loisirs & sorties", "🎟️"],
+    ["Restaurants", "🍽️"], ["Cafés & bars", "☕"], ["Alcool", "🍷"], ["Tabac", "🚬"], ["Sport", "🥊"],
+    ["Cinéma", "🎬"], ["Concerts & spectacles", "🎭"], ["Livres & jeux", "📚"], ["Loisirs & sorties", "🎟️"],
     ["Shopping", "🛍️"], ["Voyages", "✈️"], ["Cadeaux & dons", "🎁"],
   ]],
   ["virements", "Virements à des proches", "💸", [["Famille", "👨‍👩‍👧"], ["Amis", "🧑‍🤝‍🧑"], ["Autres personnes", "🤝"]]],
@@ -66,14 +67,14 @@ for (const parent of [...TREE.expense, ...TREE.income]) {
   for (const child of parent.children) BY_ID.set(child.id, child);
 }
 
-// Ids of the first category list (before 2026-11-14) and their new id.
-// null means "no category".
+// Ids of the first category list (before 2026-11-14) and their new id,
+// then ids removed later. null means "no category".
 export const LEGACY_IDS = {
   "courses": "essentiel/courses",
   "restaurants": "perso/restaurants",
   "logement": "charges-fixes/logement",
   "logement/loyer": "charges-fixes/logement",
-  "logement/energie": "charges-fixes/charges",
+  "logement/energie": "charges-fixes/electricite",
   "logement/internet-telephone": "essentiel/abonnements-telecoms",
   "logement/assurance": "charges-fixes/assurances",
   "transport": "essentiel/transport",
@@ -102,11 +103,24 @@ export const LEGACY_IDS = {
   "ventes": "revenus/ventes",
   "cadeaux-recus": "revenus/cadeaux-recus",
   "autres-revenus": "revenus/autres-revenus",
+  // "Charges" split into Électricité and Internet & box (2026-11-16): its
+  // operations go back to "À catégoriser".
+  "charges-fixes/charges": "import-depense",
 };
 
 /** Current id for a stored id: legacy ids are translated. */
 export function currentCategoryId(id) {
   return Object.hasOwn(LEGACY_IDS, id) ? LEGACY_IDS[id] : id;
+}
+
+/** Rules with current ids. A rule that now gives "Import" or no category is dropped. */
+export function currentRules(rules) {
+  const out = {};
+  for (const [key, id] of Object.entries(rules || {})) {
+    const categoryId = currentCategoryId(id);
+    if (BY_ID.has(categoryId) && !Object.values(IMPORT_ID).includes(categoryId)) out[key] = categoryId;
+  }
+  return out;
 }
 
 /** Most used categories first, then the remaining leaf categories. */

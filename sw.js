@@ -1,7 +1,7 @@
 // Offline support: cache the app shell, serve it cache first.
 // Bump VERSION at each release so phones fetch the new files.
 
-const VERSION = "v6";
+const VERSION = "v7";
 const CACHE = `open-budget-local-${VERSION}`;
 const SHELL = [
   "./",
@@ -24,8 +24,11 @@ const SHELL = [
   "js/feedback.js",
 ];
 
+// "reload" skips the HTTP cache: GitHub Pages lets browsers keep files for
+// 10 minutes, so a plain fetch could mix old and new files in one version.
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));
+  const requests = SHELL.map((url) => new Request(url, { cache: "reload" }));
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(requests)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (event) => {

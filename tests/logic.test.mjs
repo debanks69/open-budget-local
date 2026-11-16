@@ -7,7 +7,7 @@ import {
   accountBalance, balancesByAccount, kindTotal, monthSummary, shiftMonth,
   projectSaved, projectProgress, unassignedCents,
 } from "../js/ledger.js";
-import { topCategories, LEGACY_IDS, BY_ID } from "../js/categories.js";
+import { topCategories, currentRules, LEGACY_IDS, BY_ID } from "../js/categories.js";
 
 test("parseCents reads French and English input without floats", () => {
   assert.equal(parseCents("12"), 1200);
@@ -27,7 +27,7 @@ test("formatEur uses French style", () => {
 
 const op = {
   id: "a", date: "2026-11-13", type: "expense", amountCents: 1250, accountId: "compte-courant",
-  categoryId: "charges-fixes/charges", isPro: true, reimbursementStatus: "pending", createdAt: "x",
+  categoryId: "charges-fixes/electricite", isPro: true, reimbursementStatus: "pending", createdAt: "x",
 };
 const clean = { toAccountId: null, comment: "", label: "", importRef: null, reimbursedById: null };
 const v2 = (operations, extra = {}) => buildExport({ accounts: [DEFAULT_ACCOUNT], operations, ...extra });
@@ -97,6 +97,13 @@ test("topCategories puts most used first, then fills with leaf categories", () =
 
 test("old category ids are translated on import", () => {
   const old = v1([{ ...op, categoryId: "logement/energie" }, { ...op, id: "b", categoryId: "divers" }]);
-  assert.deepEqual(validateImport(old).operations.map((o) => o.categoryId), ["charges-fixes/charges", null]);
+  assert.deepEqual(validateImport(old).operations.map((o) => o.categoryId), ["charges-fixes/electricite", null]);
   for (const id of Object.values(LEGACY_IDS)) assert.ok(id === null || BY_ID.has(id), id);
+});
+
+test("old Charges goes back to categorise, and its rules are dropped", () => {
+  const file = v1([{ ...op, categoryId: "charges-fixes/charges" }]);
+  assert.equal(validateImport(file).operations[0].categoryId, "import-depense");
+  const rules = { "expense|EDF": "charges-fixes/charges", "expense|SFR": "charges-fixes/internet-box" };
+  assert.deepEqual(currentRules(rules), { "expense|SFR": "charges-fixes/internet-box" });
 });

@@ -4,7 +4,7 @@
 // purchases. A version 1 file has operations only: they go to the default
 // current account.
 
-import { BY_ID, currentCategoryId } from "./categories.js";
+import { BY_ID, currentCategoryId, currentRules } from "./categories.js";
 import { ACCOUNT_KINDS, PURCHASE_STATUS, PRIORITY } from "./ledger.js";
 
 export const FORMAT = "open-budget-local";
@@ -169,10 +169,7 @@ export function validateImport(data) {
 
 /** Check the learned rules of an export file. Files of the first version have none. */
 export function validateRules(data) {
-  const rules = {};
-  for (const [key, id] of Object.entries(data.rules || {})) {
-    const categoryId = currentCategoryId(id);
-    if (/^(expense|income)\|/.test(key) && BY_ID.has(categoryId)) rules[key] = categoryId;
-  }
+  const rules = currentRules(data.rules);
+  for (const key of Object.keys(rules)) if (!/^(expense|income)\|/.test(key)) delete rules[key];
   return rules;
 }
